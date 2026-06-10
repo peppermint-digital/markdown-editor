@@ -1,6 +1,6 @@
 {
   "name": "@peppermint-digital/markdown-editor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A customizable Markdown editor component for React and Vue with toolbar, keyboard shortcuts, and live preview",
   "exports": {
     "./core": {
@@ -12,6 +12,11 @@
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.mjs",
       "require": "./dist/react/index.js"
+    },
+    "./react-vim": {
+      "types": "./dist/react-vim/index.d.ts",
+      "import": "./dist/react-vim/index.mjs",
+      "require": "./dist/react-vim/index.js"
     },
     "./vue": {
       "types": "./dist/vue/index.d.ts",
@@ -31,23 +36,52 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.43.1",
+    "@replit/codemirror-vim": "^6.3.0",
     "markdown-it": "^14.0.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.0"
   },
   "peerDependencies": {
+    "lucide-react": ">=0.300.0",
+    "lucide-vue-next": ">=0.300.0",
+    "markdown-it": ">=14.0.0",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",
-    "lucide-react": ">=0.300.0",
-    "vue": ">=3.3.0",
-    "lucide-vue-next": ">=0.300.0"
+    "react-markdown": ">=9.0.0",
+    "remark-gfm": ">=4.0.0",
+    "vue": ">=3.3.0"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true },
-    "react-dom": { "optional": true },
-    "lucide-react": { "optional": true },
-    "vue": { "optional": true },
-    "lucide-vue-next": { "optional": true }
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "react-markdown": {
+      "optional": true
+    },
+    "remark-gfm": {
+      "optional": true
+    },
+    "lucide-react": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    },
+    "lucide-vue-next": {
+      "optional": true
+    },
+    "markdown-it": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/markdown-it": "^14.0.0",

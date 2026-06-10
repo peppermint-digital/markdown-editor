@@ -47,6 +47,13 @@ export interface MarkdownEditorProps {
     onImageUpload?: (file: File) => Promise<string>;
     /** Use shadcn/ui compatible styling */
     variant?: 'default' | 'shadcn';
+    /**
+     * Enable Vim key bindings (opt-in, e.g. per user). When true the edit surface
+     * switches from a plain <textarea> to a CodeMirror 6 editor with Vim mode and
+     * Markdown syntax highlighting. The toolbar, preview and API are unchanged.
+     * CodeMirror is lazy-loaded, so leaving this off has zero cost.
+     */
+    vim?: boolean;
 }
 
 /** Framework-agnostic toolbar action config (no icon reference) */

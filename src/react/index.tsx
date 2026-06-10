@@ -20,7 +20,7 @@ import {
     Image,
 } from 'lucide-react';
 
-import type { MarkdownEditorProps, FormatResult } from '../core/types';
+import type { MarkdownEditorProps, FormatResult, TextareaState } from '../core/types';
 import { defaultToolbar, toolbarActions } from '../core/actions';
 import { cn, baseStyles, fallbackStyles } from '../core/styles';
 import {
@@ -30,8 +30,15 @@ import {
     insertTextAtCursor,
     buildImageMarkdown,
 } from '../core/formatting';
+import type { VimEditorHandle } from './vim-editor';
 
 export type { MarkdownEditorProps, ToolbarItem } from '../core/types';
+
+// CodeMirror + Vim editor — lazy-loaded only when `vim` is enabled, so consumers
+// that never opt in pay no bundle cost.
+const VimEditor = React.lazy(
+    () => import('@peppermint-digital/markdown-editor/react-vim')
+);
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
     bold: Bold,
@@ -82,8 +89,10 @@ export function MarkdownEditor({
     buttonActiveClassName,
     onImageUpload,
     variant = 'shadcn',
+    vim = false,
 }: MarkdownEditorProps) {
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+    const vimRef = React.useRef<VimEditorHandle>(null);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const [showPreview, setShowPreview] = React.useState(
         initialPreview === true || initialPreview === 'split'
@@ -93,40 +102,57 @@ export function MarkdownEditor({
 
     const styles = variant === 'shadcn' ? baseStyles : fallbackStyles;
 
+    // Editor-agnostic glue: the framework-neutral core/ formatting works on an
+    // abstract {value, selectionStart, selectionEnd}. We read that from whichever
+    // edit surface is active (textarea or CodeMirror) and write the result back.
+    const readState = React.useCallback((): TextareaState | null => {
+        if (vim) return vimRef.current?.getState() ?? null;
+        const textarea = textareaRef.current;
+        if (!textarea) return null;
+        return getTextareaState(textarea, value);
+    }, [vim, value]);
+
+    const writeResult = React.useCallback(
+        (result: FormatResult) => {
+            if (vim) {
+                // applyResult dispatches the change → CodeMirror's updateListener
+                // fires onChange, so we must not call onChange a second time here.
+                vimRef.current?.applyResult(result);
+                return;
+            }
+            const textarea = textareaRef.current;
+            if (!textarea) return;
+            onChange(result.newValue);
+            applyCursor(textarea, result);
+        },
+        [vim, onChange]
+    );
+
     const handleImageUpload = React.useCallback(
         async (file: File) => {
             if (!onImageUpload) {
-                const textarea = textareaRef.current;
-                if (!textarea) return;
-                const state = getTextareaState(textarea, value);
-                const result = insertTextAtCursor(state, buildImageMarkdown(file.name));
-                onChange(result.newValue);
-                applyCursor(textarea, result);
+                const state = readState();
+                if (!state) return;
+                writeResult(insertTextAtCursor(state, buildImageMarkdown(file.name)));
                 return;
             }
 
             setIsUploading(true);
             try {
                 const url = await onImageUpload(file);
-                const textarea = textareaRef.current;
-                if (!textarea) return;
-                const state = getTextareaState(textarea, value);
-                const result = insertTextAtCursor(state, buildImageMarkdown(file.name, url));
-                onChange(result.newValue);
-                applyCursor(textarea, result);
+                const state = readState();
+                if (!state) return;
+                writeResult(insertTextAtCursor(state, buildImageMarkdown(file.name, url)));
             } catch (error) {
                 console.error('Image upload failed:', error);
-                const textarea = textareaRef.current;
-                if (!textarea) return;
-                const state = getTextareaState(textarea, value);
-                const result = insertTextAtCursor(state, `![${file.name}](upload-failed)`);
-                onChange(result.newValue);
-                applyCursor(textarea, result);
+                const state = readState();
+                if (!state) return;
+                writeResult(insertTextAtCursor(state, `![${file.name}](upload-failed)`));
             } finally {
                 setIsUploading(false);
             }
         },
-        [onImageUpload, value, onChange]
+        [onImageUpload, readState, writeResult]
     );
 
     const handleFileSelect = React.useCallback(
@@ -140,31 +166,27 @@ export function MarkdownEditor({
 
     const applyFormat = React.useCallback(
         (item: string) => {
-            const textarea = textareaRef.current;
-            if (!textarea) return;
-
             const action = toolbarActions[item];
             if (!action) return;
 
-            const state = getTextareaState(textarea, value);
+            const state = readState();
+            if (!state) return;
+
             const result = applyFormatAction(state, action);
 
             if ('handler' in result && result.handler === 'image') {
                 if (onImageUpload) {
                     fileInputRef.current?.click();
                 } else {
-                    const insertResult = insertTextAtCursor(state, '![alt text](image-url)', 2);
-                    onChange(insertResult.newValue);
-                    applyCursor(textarea, insertResult);
+                    writeResult(insertTextAtCursor(state, '![alt text](image-url)', 2));
                 }
                 return;
             }
 
             const formatResult = 'handler' in result ? result.result : result;
-            onChange(formatResult.newValue);
-            applyCursor(textarea, formatResult);
+            writeResult(formatResult);
         },
-        [value, onChange, onImageUpload]
+        [readState, writeResult, onImageUpload]
     );
 
     const handleKeyDown = React.useCallback(
@@ -298,19 +320,41 @@ export function MarkdownEditor({
             <div className={cn('flex items-stretch', isSplit && showPreview && styles.divider)}>
                 {(!showPreview || isSplit) && (
                     <div className={cn('flex-1 flex', isSplit && 'w-1/2')}>
-                        <textarea
-                            ref={textareaRef}
-                            value={value}
-                            onChange={(e) => onChange(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            onPaste={handlePaste}
-                            onDrop={handleDrop}
-                            onDragOver={(e) => e.preventDefault()}
-                            placeholder={placeholder}
-                            disabled={disabled}
-                            className={cn(styles.textarea, 'flex-1', textareaClassName)}
-                            style={{ minHeight }}
-                        />
+                        {vim ? (
+                            <React.Suspense
+                                fallback={
+                                    <div
+                                        className={cn(styles.textarea, 'flex-1', textareaClassName)}
+                                        style={{ minHeight }}
+                                    />
+                                }
+                            >
+                                <VimEditor
+                                    ref={vimRef}
+                                    value={value}
+                                    onChange={onChange}
+                                    placeholder={placeholder}
+                                    minHeight={minHeight}
+                                    disabled={disabled}
+                                    className={cn('flex-1', textareaClassName)}
+                                    onImageFile={onImageUpload ? handleImageUpload : undefined}
+                                />
+                            </React.Suspense>
+                        ) : (
+                            <textarea
+                                ref={textareaRef}
+                                value={value}
+                                onChange={(e) => onChange(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                onPaste={handlePaste}
+                                onDrop={handleDrop}
+                                onDragOver={(e) => e.preventDefault()}
+                                placeholder={placeholder}
+                                disabled={disabled}
+                                className={cn(styles.textarea, 'flex-1', textareaClassName)}
+                                style={{ minHeight }}
+                            />
+                        )}
                     </div>
                 )}
 
