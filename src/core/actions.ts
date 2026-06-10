@@ -16,6 +16,7 @@ export const defaultToolbar: ToolbarItem[] = [
     'image',
     'hr',
     'preview',
+    'vim',
 ];
 
 export const toolbarActions: Record<string, ToolbarActionConfig> = {

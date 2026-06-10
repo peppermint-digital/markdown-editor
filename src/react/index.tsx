@@ -18,6 +18,7 @@ import {
     Table,
     CheckSquare,
     Image,
+    Terminal,
 } from 'lucide-react';
 
 import type { MarkdownEditorProps, FormatResult, TextareaState } from '../core/types';
@@ -90,6 +91,8 @@ export function MarkdownEditor({
     onImageUpload,
     variant = 'shadcn',
     vim = false,
+    onVimChange,
+    vimStorageKey = 'md-editor:vim',
 }: MarkdownEditorProps) {
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
     const vimRef = React.useRef<VimEditorHandle>(null);
@@ -100,21 +103,43 @@ export function MarkdownEditor({
     const [isSplit, setIsSplit] = React.useState(initialPreview === 'split');
     const [isUploading, setIsUploading] = React.useState(false);
 
+    // The editor self-manages Vim mode: initial value comes from the `vim` prop,
+    // but a persisted localStorage choice (set via the toolbar toggle) wins, so
+    // the package stays drop-in without any backend wiring.
+    const [vimEnabled, setVimEnabled] = React.useState<boolean>(() => {
+        if (vimStorageKey && typeof window !== 'undefined') {
+            const stored = window.localStorage.getItem(vimStorageKey);
+            if (stored !== null) return stored === '1';
+        }
+        return vim;
+    });
+
+    const toggleVim = React.useCallback(() => {
+        setVimEnabled((prev) => {
+            const next = !prev;
+            if (vimStorageKey && typeof window !== 'undefined') {
+                window.localStorage.setItem(vimStorageKey, next ? '1' : '0');
+            }
+            onVimChange?.(next);
+            return next;
+        });
+    }, [vimStorageKey, onVimChange]);
+
     const styles = variant === 'shadcn' ? baseStyles : fallbackStyles;
 
     // Editor-agnostic glue: the framework-neutral core/ formatting works on an
     // abstract {value, selectionStart, selectionEnd}. We read that from whichever
     // edit surface is active (textarea or CodeMirror) and write the result back.
     const readState = React.useCallback((): TextareaState | null => {
-        if (vim) return vimRef.current?.getState() ?? null;
+        if (vimEnabled) return vimRef.current?.getState() ?? null;
         const textarea = textareaRef.current;
         if (!textarea) return null;
         return getTextareaState(textarea, value);
-    }, [vim, value]);
+    }, [vimEnabled, value]);
 
     const writeResult = React.useCallback(
         (result: FormatResult) => {
-            if (vim) {
+            if (vimEnabled) {
                 // applyResult dispatches the change → CodeMirror's updateListener
                 // fires onChange, so we must not call onChange a second time here.
                 vimRef.current?.applyResult(result);
@@ -125,7 +150,7 @@ export function MarkdownEditor({
             onChange(result.newValue);
             applyCursor(textarea, result);
         },
-        [vim, onChange]
+        [vimEnabled, onChange]
     );
 
     const handleImageUpload = React.useCallback(
@@ -296,6 +321,27 @@ export function MarkdownEditor({
                         );
                     }
 
+                    if (item === 'vim') {
+                        return (
+                            <button
+                                key={item}
+                                type="button"
+                                className={cn(
+                                    styles.button,
+                                    buttonClassName,
+                                    vimEnabled &&
+                                        (buttonActiveClassName || styles.buttonActive)
+                                )}
+                                onClick={toggleVim}
+                                disabled={disabled}
+                                title={vimEnabled ? 'Disable Vim mode' : 'Enable Vim mode'}
+                                aria-pressed={vimEnabled}
+                            >
+                                <Terminal className="h-4 w-4" />
+                            </button>
+                        );
+                    }
+
                     const Icon = iconMap[item];
                     if (!Icon) return null;
 
@@ -320,7 +366,7 @@ export function MarkdownEditor({
             <div className={cn('flex items-stretch', isSplit && showPreview && styles.divider)}>
                 {(!showPreview || isSplit) && (
                     <div className={cn('flex-1 flex', isSplit && 'w-1/2')}>
-                        {vim ? (
+                        {vimEnabled ? (
                             <React.Suspense
                                 fallback={
                                     <div

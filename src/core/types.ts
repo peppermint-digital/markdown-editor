@@ -14,7 +14,8 @@ export type ToolbarItem =
     | 'table'
     | 'checklist'
     | 'image'
-    | 'preview';
+    | 'preview'
+    | 'vim';
 
 export interface MarkdownEditorProps {
     /** Current markdown content */
@@ -48,12 +49,26 @@ export interface MarkdownEditorProps {
     /** Use shadcn/ui compatible styling */
     variant?: 'default' | 'shadcn';
     /**
-     * Enable Vim key bindings (opt-in, e.g. per user). When true the edit surface
-     * switches from a plain <textarea> to a CodeMirror 6 editor with Vim mode and
-     * Markdown syntax highlighting. The toolbar, preview and API are unchanged.
-     * CodeMirror is lazy-loaded, so leaving this off has zero cost.
+     * Initial state of the Vim key bindings toggle. The editor self-manages the
+     * live state from here on (toggled via the toolbar `vim` button and persisted
+     * to localStorage), so the package stays drop-in for any consumer without
+     * backend wiring. When on, the edit surface switches from a plain <textarea>
+     * to a CodeMirror 6 editor with Vim mode and Markdown syntax highlighting;
+     * toolbar, preview and API are unchanged. CodeMirror is lazy-loaded, so
+     * leaving Vim off has zero bundle cost.
      */
     vim?: boolean;
+    /**
+     * Called whenever the user toggles Vim mode via the toolbar. Lets a consumer
+     * additionally sync the choice server-side; persistence to localStorage
+     * happens regardless.
+     */
+    onVimChange?: (enabled: boolean) => void;
+    /**
+     * localStorage key used to remember the Vim toggle. Override to scope it per
+     * app/editor instance. Set to null to disable persistence. Default: "md-editor:vim".
+     */
+    vimStorageKey?: string | null;
 }
 
 /** Framework-agnostic toolbar action config (no icon reference) */
